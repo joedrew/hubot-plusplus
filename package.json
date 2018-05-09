@@ -2,7 +2,7 @@
   "name": "hubot-plusplus-slack",
   "version": "1.0.0",
   "description": "A hubot script for adding or removing points, slack thread aware",
-  "main": "index.js",
+  "main": "src/plusplus.js",
   "scripts": {
     "test": "mocha --recursive ./test"
   },
@@ -22,13 +22,14 @@
     "url": "https://github.com/ajacksified/hubot-plusplus/issues"
   },
   "dependencies": {
-    "underscore": ">= 1.0",
-    "clark": "0.0.6"
+    "@slack/client": "^4.2.0",
+    "clark": "0.0.6",
+    "underscore": ">= 1.0"
   },
   "devDependencies": {
-    "mocha": "*",
     "chai": "*",
-    "sinon-chai": "*",
-    "sinon": "*"
+    "mocha": "*",
+    "sinon": "*",
+    "sinon-chai": "*"
   }
 }
