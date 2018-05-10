@@ -96,8 +96,9 @@ module.exports = function(robot) {
             inclusive: true
           });
         } catch(e) {
-          // Silently accept failure, and fall back to the old behaviour of
-          // looking it up in the bot's brain
+          // Accept failure, and fall back to the old behaviour of looking it
+          // up in the bot's brain
+          console.log(`Couldn't look up thread from ${from} due to ${e}`);
         }
 
         if (thread && thread.messages.length) {
