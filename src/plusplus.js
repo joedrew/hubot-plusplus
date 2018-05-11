@@ -43,31 +43,25 @@ const _ = require('underscore');
 const clark = require('clark');
 const querystring = require('querystring');
 const ScoreKeeper = require('./scorekeeper');
+const { WebClient } = require('@slack/client');
 
 module.exports = function(robot) {
+  const web = new WebClient(process.env.HUBOT_SLACK_TOKEN);
   const scoreKeeper = new ScoreKeeper(robot);
   const scoreKeyword   = process.env.HUBOT_PLUSPLUS_KEYWORD || 'score';
   const reasonsKeyword = process.env.HUBOT_PLUSPLUS_REASONS || 'raisins';
   const reasonConjunctions = process.env.HUBOT_PLUSPLUS_CONJUNCTIONS || 'for|because|cause|cuz|as';
+  const commandRegex = new RegExp(`^([\\s\\w'@.\\-:\\u3040-\\u30FF\\uFF01-\\uFF60\\u4E00-\\u9FA0]*)\s*(\\+\\+|--|—)(?:\\s+(?:${reasonConjunctions})\\s+(.+))?$`, 'i');
 
-  // sweet regex bro
-  robot.hear(new RegExp(`\
-\
-^\
-\
-([\\s\\w'@.\\-:\\u3040-\\u30FF\\uFF01-\\uFF60\\u4E00-\\u9FA0]*)\
-\
-\\s*\
-\
-(\\+\\+|--|—)\
-\
-(?:\\s+(?:${reasonConjunctions})\\s+(.+))?\
-$\
-`, 'i'), function(msg) {
-    // let's get our local vars in place
-    let [dummy, name, operator, reason] = Array.from(msg.match);
-    const from = msg.message.user.name.toLowerCase();
-    const { room } = msg.message;
+  // Given the results of a match of commandRegex against a message, extracts
+  // and returns an array in the order [ name, operator, reason ], or null if
+  // there was no match
+  function extractCommand(regexMatch) {
+    if (!regexMatch) {
+      return null;
+    }
+
+    let [_, name, operator, reason] = regexMatch;
 
     // do some sanitizing
     reason = reason != null ? reason.trim().toLowerCase() : undefined;
@@ -80,18 +74,54 @@ $\
       }
     }
 
-    // check whether a name was specified. use MRU if not
-    if ((name == null) || (name === '')) {
+    return [ name, operator, reason ];
+  }
+
+  robot.hear(commandRegex, async function (msg) {
+    let [ name, operator, reason ] = extractCommand(msg.match);
+    const from = msg.message.user.name.toLowerCase();
+    const { room } = msg.message;
+
+    // check whether a name was specified. check previous results if not
+    if (!name || name === '') {
       let lastReason;
-      [name, lastReason] = Array.from(scoreKeeper.last(room));
-      if ((reason == null) && (lastReason != null)) { reason = lastReason; }
+      if (msg.message.thread_ts) {
+        let thread;
+
+        try {
+          thread = await web.conversations.history({
+            channel: msg.envelope.room,
+            latest: msg.message.thread_ts,
+            count: 1,
+            inclusive: true
+          });
+        } catch(e) {
+          // Accept failure, and fall back to the old behaviour of looking it
+          // up in the bot's brain
+          console.log(`Couldn't look up thread from ${from} due to ${e}`);
+        }
+
+        if (thread && thread.messages.length) {
+          let match = thread.messages[0].text.match(commandRegex);
+          let extracted = extractCommand(thread.messages[0].text.match(commandRegex));
+          if (extracted) {
+            [ name, operator, lastReason ] = extracted;
+          }
+        }
+      }
+
+      if (!name) {
+        [name, lastReason] = scoreKeeper.last(room);
+      }
+
+      if (!reason && lastReason) {
+        reason = lastReason;
+      }
     }
 
     // do the {up, down}vote, and figure out what the new score is
-    const [score, reasonScore] = Array.from(operator === "++" ?
-              scoreKeeper.add(name, from, room, reason)
-            :
-              scoreKeeper.subtract(name, from, room, reason));
+    const [score, reasonScore] = operator === "++" ? scoreKeeper.add(name, from, room, reason)
+                                                   : scoreKeeper.subtract(name, from, room, reason);
 
     // if we got a score, then display all the things and fire off events!
     if (score != null) {
@@ -110,9 +140,11 @@ $\
                     `${name} has ${score} points`;
 
 
+      // Make sure we're threading on the user's message
+      msg.message.thread_ts = msg.message.rawMessage.ts
       msg.send(message);
 
-      return robot.emit("plus-one", {
+      robot.emit("plus-one", {
         name,
         direction: operator,
         room,
@@ -122,14 +154,7 @@ $\
     }
 });
 
-  robot.respond(new RegExp(`\
-(?:erase)\
-\
-([\\s\\w'@.-:\\u3040-\\u30FF\\uFF01-\\uFF60\\u4E00-\\u9FA0]*)\
-\
-(?:\\s+(?:for|because|cause|cuz)\\s+(.+))?\
-$\
-`, 'i'), function(msg) {
+  robot.respond(new RegExp(`(?:erase )([\\s\\w'@.-:\\u3040-\\u30FF\\uFF01-\\uFF60\\u4E00-\\u9FA0]*)(?:\\s+(?:${reasonConjunctions})\\s+(.+))?$`, 'i'), function(msg) {
     let erased;
     let [__, name, reason] = Array.from(msg.match);
     const from = msg.message.user.name.toLowerCase();
@@ -173,8 +198,6 @@ $\
         name = (name.replace(/(^\s*@)|([,:\s]*$)/g, ''));
       }
     }
-
-    console.log(name);
 
     const score = scoreKeeper.scoreForUser(name);
     const reasons = scoreKeeper.reasonsForUser(name);
