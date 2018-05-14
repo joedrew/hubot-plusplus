@@ -46,7 +46,7 @@ const ScoreKeeper = require('./scorekeeper');
 const { WebClient } = require('@slack/client');
 
 module.exports = function(robot) {
-  const web = new WebClient(process.env.HUBOT_SLACK_TOKEN);
+  const web = new WebClient(process.env.HUBOT_SLACK_API_TOKEN);
   const scoreKeeper = new ScoreKeeper(robot);
   const scoreKeyword   = process.env.HUBOT_PLUSPLUS_KEYWORD || 'score';
   const reasonsKeyword = process.env.HUBOT_PLUSPLUS_REASONS || 'raisins';
