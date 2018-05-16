@@ -141,7 +141,12 @@ module.exports = function(robot) {
 
 
       // Make sure we're threading on the user's message
-      msg.message.thread_ts = msg.message.rawMessage.ts
+      if (msg.message.rawMessage.thread_ts) {
+        msg.message.thread_ts = msg.message.rawMessage.thread_ts;
+      } else {
+        msg.message.thread_ts = msg.message.rawMessage.ts;
+      }
+
       msg.send(message);
 
       robot.emit("plus-one", {
